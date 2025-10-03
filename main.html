@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Color-Label Text Highlighter (Vue 3, no TypeScript)</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Rendered text preserves whitespace like a document */
+    .rendered-text { white-space: pre-wrap; word-wrap: break-word; }
+    .hl { border-radius: 2px; padding: 0 1px; }
+    .hl[data-active="false"] { background: transparent !important; }
+    .selectable { caret-color: #111827; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div id="app" class="mx-auto max-w-6xl p-4 md:p-8">
+    <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold tracking-tight">Color‑Label Text Highlighter (Vue)</h1>
+      <div class="flex items-center gap-2">
+        <button @click="seedDemo" class="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white shadow hover:opacity-90">Load demo</button>
+        <a href="https://vuejs.org/" target="_blank" class="text-sm text-slate-600 underline">Vue 3</a>
+      </div>
+    </header>
+
+    <!-- Labels -->
+    <section class="mb-6 grid gap-4 rounded-2xl border bg-white p-4 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Labels</h2>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button class="rounded-full border px-3 py-1 text-sm shadow-sm hover:shadow"
+                :class="{ 'ring-2 ring-offset-2': filterLabelId===null }"
+                @click="filterLabelId=null">
+          <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" style="background:#ffffff"></span>All</span>
+        </button>
+        <button v-for="lab in labels" :key="lab.id"
+                class="group rounded-full border px-3 py-1 text-sm shadow-sm hover:shadow"
+                :style="{ borderColor: lab.color, boxShadow: filterLabelId===lab.id ? '0 0 0 2px '+lab.color+'55' : undefined }"
+                :class="{ 'ring-2 ring-offset-2': filterLabelId===lab.id }"
+                @click="filterLabelId = filterLabelId===lab.id ? null : lab.id">
+          <span class="inline-flex items-center gap-2">
+            <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: lab.color }"></span>
+            <span class="font-medium">{{ lab.name }}</span>
+          </span>
+        </button>
+      </div>
+      <div class="flex flex-wrap items-end gap-3 border-t pt-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Name</label>
+          <input v-model="newLabelName" class="mt-1 w-48 rounded-xl border px-3 py-2 text-sm" placeholder="e.g. Theme A" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Color</label>
+          <input type="color" v-model="newLabelColor" class="mt-1 h-9 w-16 cursor-pointer rounded-xl border px-1" />
+        </div>
+        <button @click="addLabel" class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-blue-700">Add label</button>
+        <div class="text-xs text-slate-500">(Click a label above to filter highlights)</div>
+      </div>
+    </section>
+
+    <!-- Add Section -->
+    <section class="mb-6 grid gap-4 rounded-2xl border bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">Add Text Section</h2>
+      <div class="grid gap-3 md:grid-cols-2">
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Title</label>
+          <input v-model="newSectionTitle" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Section title" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Paste text</label>
+          <textarea v-model="newSectionContent" rows="3" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Paste your text here"></textarea>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="addSectionFromText" class="rounded-xl bg-green-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-green-700">Add section</button>
+        <label class="cursor-pointer text-sm text-slate-600">
+          <input type="file" accept=".txt" class="hidden" @change="onFileUpload" />
+          <span class="inline-flex items-center gap-2 rounded-xl border px-3 py-2 shadow-sm hover:shadow">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload .txt
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Sections -->
+    <section class="grid gap-6">
+      <div v-for="section in sections" :key="section.id" class="rounded-2xl border bg-white p-4 shadow-sm">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="text-base font-semibold">{{ section.title }}</h3>
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span>{{ countHighlights(section.id) }} highlights</span>
+            <span>·</span>
+            <span>{{ (commentsBySection.get(section.id)||[]).length }} comments</span>
+          </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <!-- Textarea for selection -->
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-600">Select text here to create a highlight or comment</label>
+            <textarea
+              :ref="setSectionRef(section.id)"
+              class="selectable h-48 w-full rounded-xl border px-3 py-2 text-sm"
+              v-model="section.content"
+              @mouseup="rememberSelection(section)"
+              @keyup="rememberSelection(section)"
+            ></textarea>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <select v-model="selectedLabelId" class="rounded-xl border px-3 py-2 text-sm">
+                <option :value="null">Plain (white)</option>
+                <option v-for="lab in labels" :key="lab.id" :value="lab.id">{{ lab.name }}</option>
+              </select>
+              <button @click="highlightSelection(section)" class="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white shadow hover:bg-slate-800">Highlight</button>
+              <button @click="openCommentPrompt(section)" class="rounded-xl bg-indigo-600 px-3 py-2 text-sm text-white shadow hover:bg-indigo-700">Add comment</button>
+              <button @click="clearSelection()" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Clear selection</button>
+            </div>
+          </div>
+
+          <!-- Rendered with highlights -->
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-600">Rendered with highlights (click a label above to filter)</label>
+            <div class="rendered-text rounded-xl border p-3 text-sm">
+              <template v-for="seg in segmentsFor(section)" :key="seg.start+'-'+seg.end">
+                <span v-if="seg.highlights.length===0" v-text="seg.text"></span>
+                <span v-else
+                      class="hl"
+                      :data-active="seg.highlights.some(h => !filterLabelId || h.labelId===filterLabelId)"
+                      :style="highlightStyle(seg.highlights)">{{ seg.text }}</span>
+              </template>
+            </div>
+            <div class="mt-2 text-xs text-slate-500">Overlapping highlights blend by average color.</div>
+          </div>
+        </div>
+
+        <!-- Inline lists -->
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <!-- Highlights list -->
+          <div>
+            <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Highlights</div>
+            <div class="flex max-h-40 flex-col gap-2 overflow-auto">
+              <div v-for="h in (highlightsBySection.get(section.id)||[])" :key="h.id" class="flex items-center justify-between rounded-xl border p-2 text-sm">
+                <div class="flex items-center gap-2">
+                  <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: getLabelColor(h.labelId) }"></span>
+                  <code class="text-xs text-slate-600">{{ excerpt(section.content, h.range) }}</code>
+                </div>
+                <button @click="deleteHighlight(h.id)" class="rounded-lg border px-2 py-1 text-xs shadow-sm hover:bg-slate-50">Delete</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comments list -->
+          <div>
+            <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Comments</div>
+            <div class="flex max-h-40 flex-col gap-2 overflow-auto">
+              <div v-for="c in (commentsBySection.get(section.id)||[])" :key="c.id" class="rounded-xl border p-2 text-sm">
+                <div class="mb-1 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: getLabelColor(c.labelId) }"></span>
+                    <span class="text-xs text-slate-500">{{ rangeLabel(c.range) }}</span>
+                  </div>
+                  <button @click="deleteComment(c.id)" class="rounded-lg border px-2 py-1 text-xs shadow-sm hover:bg-slate-50">Delete</button>
+                </div>
+                <div class="text-slate-800">{{ c.text }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const { createApp, reactive, ref, computed } = Vue;
+
+    function uid(prefix) {
+      return (prefix||'id') + '_' + Math.random().toString(36).slice(2,9);
+    }
+    function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+    function averageColors(hexes, alpha) {
+      if (!hexes.length) return 'transparent';
+      let r=0,g=0,b=0;
+      hexes.forEach(h=>{ r+=parseInt(h.slice(1,3),16); g+=parseInt(h.slice(3,5),16); b+=parseInt(h.slice(5,7),16); });
+      r=Math.round(r/hexes.length); g=Math.round(g/hexes.length); b=Math.round(b/hexes.length);
+      return `rgba(${r}, ${g}, ${b}, ${alpha==null?0.4:alpha})`;
+    }
+
+    createApp({
+      setup() {
+        const sections = reactive([]);
+        const labels = reactive([]);
+        const highlights = reactive([]);
+        const comments = reactive([]);
+
+        const newLabelName = ref("");
+        const newLabelColor = ref("#fde047");
+        const newSectionTitle = ref("");
+        const newSectionContent = ref("");
+
+        const selectedLabelId = ref(null); // for creating
+        const filterLabelId = ref(null); // for viewing
+
+        const textareaRefs = new Map();
+        function setSectionRef(id) {
+          return (el) => { if (el) textareaRefs.set(id, el); };
+        }
+
+        // Derived groupings
+        const highlightsBySection = computed(() => {
+          const m = new Map();
+          sections.forEach(s => m.set(s.id, []));
+          highlights.forEach(h => { if(!m.has(h.sectionId)) m.set(h.sectionId, []); m.get(h.sectionId).push(h); });
+          return m;
+        });
+        const commentsBySection = computed(() => {
+          const m = new Map();
+          sections.forEach(s => m.set(s.id, []));
+          comments.forEach(c => { if(!m.has(c.sectionId)) m.set(c.sectionId, []); m.get(c.sectionId).push(c); });
+          return m;
+        });
+
+        function addLabel() {
+          if (!newLabelName.value.trim()) return;
+          labels.push({ id: uid('lab'), name: newLabelName.value.trim(), color: newLabelColor.value });
+          newLabelName.value = "";
+        }
+
+        function addSectionFromText() {
+          if (!newSectionContent.value.trim()) return;
+          sections.push({ id: uid('sec'), title: newSectionTitle.value.trim() || 'Section '+(sections.length+1), content: newSectionContent.value });
+          newSectionTitle.value = ""; newSectionContent.value = "";
+        }
+
+        async function onFileUpload(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          const text = await file.text();
+          sections.push({ id: uid('sec'), title: file.name, content: text });
+          e.target.value = "";
+        }
+
+        // Selection memory per section
+        const lastSelection = ref(null); // { sectionId, start, end }
+        function rememberSelection(section) {
+          const ta = textareaRefs.get(section.id);
+          if (!ta) return;
+          const start = ta.selectionStart, end = ta.selectionEnd;
+          if (start===end) { lastSelection.value = null; return; }
+          lastSelection.value = { sectionId: section.id, start: Math.min(start,end), end: Math.max(start,end) };
+        }
+        function clearSelection() { lastSelection.value = null; }
+
+        function highlightSelection(section) {
+          const sel = lastSelection.value; if (!sel || sel.sectionId!==section.id) return;
+          const id = uid('hl');
+          highlights.push({ id, sectionId: section.id, range: { start: sel.start, end: sel.end }, labelId: selectedLabelId.value });
+          lastSelection.value = null;
+        }
+
+        function openCommentPrompt(section) {
+          const sel = lastSelection.value; if (!sel || sel.sectionId!==section.id) return;
+          const text = window.prompt('Comment text:');
+          if (!text || !text.trim()) return;
+          comments.push({ id: uid('cmt'), sectionId: section.id, range: { start: sel.start, end: sel.end }, text: text.trim(), labelId: selectedLabelId.value });
+          lastSelection.value = null;
+        }
+
+        function deleteHighlight(id) {
+          const idx = highlights.findIndex(h => h.id===id);
+          if (idx>=0) highlights.splice(idx,1);
+        }
+        function deleteComment(id) {
+          const idx = comments.findIndex(c => c.id===id);
+          if (idx>=0) comments.splice(idx,1);
+        }
+
+        function getLabelColor(labelId) {
+          if (!labelId) return '#ffffff';
+          const lab = labels.find(l => l.id===labelId);
+          return lab ? lab.color : '#ffffff';
+        }
+
+        function rangeLabel(r) { return `[${r.start}…${r.end}]`; }
+        function excerpt(text, r) { return text.slice(r.start, Math.min(r.start+24, r.end)).replace(/\s+/g,' ') + (r.end-r.start>24?'…':''); }
+
+        function countHighlights(sectionId) {
+          return (highlightsBySection.value.get(sectionId)||[]).length;
+        }
+
+        // Segment text with (possibly overlapping) highlights
+        function segmentsFor(section) {
+          const text = section.content || '';
+          const hs = (highlightsBySection.value.get(section.id) || []).slice();
+          // when filtering, we still split by all ranges, but style only the ones matching filter
+          const points = new Set([0, text.length]);
+          hs.forEach(h=>{ points.add(clamp(h.range.start,0,text.length)); points.add(clamp(h.range.end,0,text.length)); });
+          const sorted = Array.from(points).sort((a,b)=>a-b);
+          const segs = [];
+          for (let i=0;i<sorted.length-1;i++){
+            const start=sorted[i], end=sorted[i+1];
+            if (start===end) continue;
+            const segText = text.slice(start,end);
+            const segHighlights = hs.filter(h => start < h.range.end && end > h.range.start);
+            segs.push({ start, end, text: segText, highlights: segHighlights });
+          }
+          return segs;
+        }
+
+        function highlightStyle(hls) {
+          // If filtering, include only matching label colors; otherwise include all
+          const visible = hls.filter(h => !filterLabelId.value || h.labelId===filterLabelId.value);
+          if (!visible.length) return { background: 'transparent' };
+          const colors = visible.map(h => getLabelColor(h.labelId));
+          return { background: averageColors(colors, 0.45) };
+        }
+
+        function seedDemo() {
+          labels.splice(0, labels.length, { id: uid('lab'), name: 'Claim', color: '#fca5a5' }, { id: uid('lab'), name: 'Evidence', color: '#93c5fd' }, { id: uid('lab'), name: 'Counter', color: '#fde68a' });
+          sections.splice(0, sections.length, { id: uid('sec'), title: 'Demo Passage', content: 'The quick brown fox jumps over the lazy dog. The second sentence provides evidence. However, a counterpoint emerges later.' });
+          const s = sections[0];
+          highlights.splice(0, highlights.length,
+            { id: uid('hl'), sectionId: s.id, range: { start: 4, end: 19 }, labelId: labels[0].id },
+            { id: uid('hl'), sectionId: s.id, range: { start: 16, end: 35 }, labelId: labels[1].id },
+            { id: uid('hl'), sectionId: s.id, range: { start: 57, end: 86 }, labelId: labels[1].id },
+            { id: uid('hl'), sectionId: s.id, range: { start: 94, end: 115 }, labelId: labels[2].id }
+          );
+          comments.splice(0, comments.length,
+            { id: uid('cmt'), sectionId: s.id, range: { start: 4, end: 19 }, text: 'Main claim here', labelId: labels[0].id },
+            { id: uid('cmt'), sectionId: s.id, range: { start: 57, end: 86 }, text: 'Evidence provided', labelId: labels[1].id },
+            { id: uid('cmt'), sectionId: s.id, range: { start: 94, end: 115 }, text: 'Counter-argument noted', labelId: labels[2].id },
+          );
+          filterLabelId.value = null; selectedLabelId.value = labels[0].id; lastSelection.value = null;
+        }
+
+        return {
+          // state
+          sections, labels, highlights, comments,
+          newLabelName, newLabelColor, newSectionTitle, newSectionContent,
+          selectedLabelId, filterLabelId,
+          // refs
+          setSectionRef, rememberSelection, clearSelection,
+          // actions
+          addLabel, addSectionFromText, onFileUpload, highlightSelection, openCommentPrompt,
+          deleteHighlight, deleteComment,
+          // derived helpers
+          highlightsBySection, commentsBySection,
+          segmentsFor, highlightStyle, getLabelColor,
+          excerpt, rangeLabel, countHighlights,
+          seedDemo
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
