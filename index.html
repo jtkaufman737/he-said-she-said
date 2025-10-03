@@ -3,354 +3,329 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Color-Label Text Highlighter (Vue 3, no TypeScript)</title>
+  <title>Unified Text View Highlighter (Vue 3) + Nav</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Rendered text preserves whitespace like a document */
-    .rendered-text { white-space: pre-wrap; word-wrap: break-word; }
+    .rendered { white-space: pre-wrap; word-wrap: break-word; }
     .hl { border-radius: 2px; padding: 0 1px; }
     .hl[data-active="false"] { background: transparent !important; }
-    .selectable { caret-color: #111827; }
+    .rendered[contenteditable="false"] { caret-color: transparent; }
+    .rendered[contenteditable="true"] { caret-color: #111827; }
+    .sidebar-scroll { max-height: calc(100vh - 11rem); }
+    .linklike { cursor: pointer; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
   <div id="app" class="mx-auto max-w-6xl p-4 md:p-8">
-    <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-bold tracking-tight">Color‑Label Text Highlighter (Vue)</h1>
-      <div class="flex items-center gap-2">
-        <button @click="seedDemo" class="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white shadow hover:opacity-90">Load demo</button>
-        <a href="https://vuejs.org/" target="_blank" class="text-sm text-slate-600 underline">Vue 3</a>
+    <nav class="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white text-sm font-bold">RH</span>
+        <h1 class="text-xl md:text-2xl font-bold tracking-tight">Unified Text Highlighter</h1>
       </div>
-    </header>
+      <ul class="flex flex-wrap items-center gap-2 text-sm">
+        <li><a :class="navClass('/')" @click.prevent="go('/')" href="#/">Document</a></li>
+        <li><a :class="navClass('/conversations')" @click.prevent="go('/conversations')" href="#/conversations">Conversations</a></li>
+        <li><a :class="navClass('/learn')" @click.prevent="go('/learn')" href="#/learn">Learn Rhetoric</a></li>
+      </ul>
+    </nav>
 
-    <!-- Labels -->
-    <section class="mb-6 grid gap-4 rounded-2xl border bg-white p-4 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Labels</h2>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button class="rounded-full border px-3 py-1 text-sm shadow-sm hover:shadow"
-                :class="{ 'ring-2 ring-offset-2': filterLabelId===null }"
-                @click="filterLabelId=null">
-          <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" style="background:#ffffff"></span>All</span>
-        </button>
-        <button v-for="lab in labels" :key="lab.id"
-                class="group rounded-full border px-3 py-1 text-sm shadow-sm hover:shadow"
-                :style="{ borderColor: lab.color, boxShadow: filterLabelId===lab.id ? '0 0 0 2px '+lab.color+'55' : undefined }"
-                :class="{ 'ring-2 ring-offset-2': filterLabelId===lab.id }"
-                @click="filterLabelId = filterLabelId===lab.id ? null : lab.id">
-          <span class="inline-flex items-center gap-2">
-            <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: lab.color }"></span>
-            <span class="font-medium">{{ lab.name }}</span>
-          </span>
-        </button>
-      </div>
-      <div class="flex flex-wrap items-end gap-3 border-t pt-3">
-        <div>
-          <label class="block text-xs font-medium text-slate-600">Name</label>
-          <input v-model="newLabelName" class="mt-1 w-48 rounded-xl border px-3 py-2 text-sm" placeholder="e.g. Theme A" />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-600">Color</label>
-          <input type="color" v-model="newLabelColor" class="mt-1 h-9 w-16 cursor-pointer rounded-xl border px-1" />
-        </div>
-        <button @click="addLabel" class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-blue-700">Add label</button>
-        <div class="text-xs text-slate-500">(Click a label above to filter highlights)</div>
-      </div>
-    </section>
+    <!-- Document ROUTE -->
+    <section v-if="route==='/'">
+      <div class="grid gap-6 md:grid-cols-12">
+        <!-- Sidebar widened -->
+        <aside class="md:col-span-5 lg:col-span-4 rounded-2xl border bg-white p-4 shadow-sm">
+          <h2 class="text-lg font-semibold mb-3">Highlighting</h2>
 
-    <!-- Add Section -->
-    <section class="mb-6 grid gap-4 rounded-2xl border bg-white p-4 shadow-sm">
-      <h2 class="text-lg font-semibold">Add Text Section</h2>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div>
-          <label class="block text-xs font-medium text-slate-600">Title</label>
-          <input v-model="newSectionTitle" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Section title" />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-600">Paste text</label>
-          <textarea v-model="newSectionContent" rows="3" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Paste your text here"></textarea>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <button @click="addSectionFromText" class="rounded-xl bg-green-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-green-700">Add section</button>
-        <label class="cursor-pointer text-sm text-slate-600">
-          <input type="file" accept=".txt" class="hidden" @change="onFileUpload" />
-          <span class="inline-flex items-center gap-2 rounded-xl border px-3 py-2 shadow-sm hover:shadow">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Upload .txt
-          </span>
-        </label>
-      </div>
-    </section>
-
-    <!-- Sections -->
-    <section class="grid gap-6">
-      <div v-for="section in sections" :key="section.id" class="rounded-2xl border bg-white p-4 shadow-sm">
-        <div class="mb-3 flex items-center justify-between gap-3">
-          <h3 class="text-base font-semibold">{{ section.title }}</h3>
-          <div class="flex items-center gap-2 text-xs text-slate-500">
-            <span>{{ countHighlights(section.id) }} highlights</span>
-            <span>·</span>
-            <span>{{ (commentsBySection.get(section.id)||[]).length }} comments</span>
+          <!-- Add labels (no predefined) -->
+          <div class="mb-4">
+            <label class="block text-xs font-medium text-slate-600">New label</label>
+            <div class="mt-1 flex flex-wrap items-end gap-3">
+              <input v-model.trim="newLabel.name" class="w-60 rounded-xl border px-3 py-2 text-sm" placeholder="e.g. Theme A"/>
+              <input type="color" v-model="newLabel.color" class="h-9 w-16 cursor-pointer rounded-xl border px-1"/>
+              <button @click="addLabel" class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-blue-700">Add</button>
+            </div>
           </div>
-        </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <!-- Textarea for selection -->
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-600">Select text here to create a highlight or comment</label>
-            <textarea
-              :ref="setSectionRef(section.id)"
-              class="selectable h-48 w-full rounded-xl border px-3 py-2 text-sm"
-              v-model="section.content"
-              @mouseup="rememberSelection(section)"
-              @keyup="rememberSelection(section)"
-            ></textarea>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
+          <!-- Label filters -->
+          <div class="mb-4">
+            <h3 class="text-sm font-semibold mb-2">Filter by label</h3>
+            <div class="flex flex-wrap gap-2">
+              <button @click="activeFilter = 'ALL'; filterHighlights()" class="rounded-full border px-3 py-1 text-xs shadow-sm hover:shadow" :class="{'ring-2 ring-offset-2': activeFilter==='ALL'}">All</button>
+              <button v-for="lab in labels" :key="lab.id" @click="activeFilter = lab.id; filterHighlights()" class="rounded-full border px-3 py-1 text-xs shadow-sm hover:shadow" :style="{ borderColor: lab.color }" :class="{'ring-2 ring-offset-2': activeFilter===lab.id}">
+                <span class="inline-flex items-center gap-2">
+                  <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: lab.color }"></span>
+                  <span class="font-medium">{{ lab.name }}</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Apply highlight to current selection -->
+          <div class="mb-4">
+            <h3 class="text-sm font-semibold mb-2">Apply to selection</h3>
+            <div class="flex items-center gap-2">
               <select v-model="selectedLabelId" class="rounded-xl border px-3 py-2 text-sm">
-                <option :value="null">Plain (white)</option>
+                <option disabled value="">Pick a label…</option>
                 <option v-for="lab in labels" :key="lab.id" :value="lab.id">{{ lab.name }}</option>
               </select>
-              <button @click="highlightSelection(section)" class="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white shadow hover:bg-slate-800">Highlight</button>
-              <button @click="openCommentPrompt(section)" class="rounded-xl bg-indigo-600 px-3 py-2 text-sm text-white shadow hover:bg-indigo-700">Add comment</button>
-              <button @click="clearSelection()" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Clear selection</button>
+              <button @click="applyHighlight" class="rounded-xl bg-indigo-600 px-3 py-2 text-sm text-white shadow hover:bg-indigo-700">Highlight</button>
+              <button @click="clearSelection" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Clear</button>
             </div>
+            <p class="text-xs text-slate-500 mt-2">Select text in the main area and click Highlight.</p>
           </div>
 
-          <!-- Rendered with highlights -->
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-600">Rendered with highlights (click a label above to filter)</label>
-            <div class="rendered-text rounded-xl border p-3 text-sm">
-              <template v-for="seg in segmentsFor(section)" :key="seg.start+'-'+seg.end">
-                <span v-if="seg.highlights.length===0" v-text="seg.text"></span>
-                <span v-else
-                      class="hl"
-                      :data-active="seg.highlights.some(h => !filterLabelId || h.labelId===filterLabelId)"
-                      :style="highlightStyle(seg.highlights)">{{ seg.text }}</span>
-              </template>
+          <!-- Quick actions -->
+          <div class="border-t pt-3 sidebar-scroll overflow-auto">
+            <h3 class="text-sm font-semibold mb-2">Quick actions</h3>
+            <div class="flex flex-wrap gap-2">
+              <button @click="toggleEdit" class="rounded-xl px-3 py-2 text-sm shadow-sm hover:shadow" :class="isEditing ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-900 text-white hover:opacity-90'">{{ isEditing ? 'Save' : 'Edit text' }}</button>
+              <button @click="exportHTML" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Export HTML</button>
+              <button @click="saveConversation" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Save as conversation</button>
+              <button @click="resetAll" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Reset</button>
             </div>
-            <div class="mt-2 text-xs text-slate-500">Overlapping highlights blend by average color.</div>
+          </div>
+        </aside>
+
+        <!-- Main content (Unified text view) -->
+        <main class="md:col-span-7 lg:col-span-8 rounded-2xl border bg-white p-4 shadow-sm">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold">Document</h2>
+            <div class="text-xs text-slate-500">{{ highlightCount }} highlights</div>
+          </div>
+          <textarea v-if="isEditing" ref="editArea" v-model="draftText" class="h-64 w-full rounded-xl border px-3 py-2 text-sm" placeholder="Paste your text here"></textarea>
+          <div v-else id="rendered" ref="rendered" class="rendered rounded-xl border p-3 text-sm min-h-64" contenteditable="false" @mouseup="cacheSelectionRange"></div>
+        </main>
+      </div>
+    </section>
+
+    <!-- Conversations ROUTE -->
+    <section v-else-if="route==='/conversations'">
+      <div class="rounded-2xl border bg-white p-4 shadow-sm">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold">Conversations</h2>
+          <div class="flex items-center gap-2">
+            <input v-model.trim="convSearch" class="rounded-xl border px-3 py-2 text-sm" placeholder="Search by name…"/>
+            <button @click="go('/')" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Back to document</button>
+          </div>
+        </div>
+        <div v-if="filteredConversations.length===0" class="text-sm text-slate-500">No conversations yet. Use Save as conversation on the Document page.</div>
+        <ul class="divide-y">
+          <li v-for="c in filteredConversations" :key="c.id" class="py-3 flex items-start justify-between gap-4">
+            <div>
+              <div class="font-medium">{{ c.name }}</div>
+              <div class="text-xs text-slate-500">{{ formatDate(c.createdAt) }}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="loadConversation(c.id)" class="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white shadow hover:opacity-90">Open</button>
+              <button @click="exportConversation(c.id)" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Export</button>
+              <button @click="deleteConversation(c.id)" class="rounded-xl border px-3 py-2 text-sm shadow-sm hover:shadow">Delete</button>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Learn ROUTE -->
+    <section v-else-if="route==='/learn'">
+      <div class="rounded-2xl border bg-white p-4 shadow-sm">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold">Learn Rhetoric</h2>
+          <div class="flex items-center gap-2">
+            <input v-model.trim="learnSearch" class="rounded-xl border px-3 py-2 text-sm" placeholder="Search…"/>
+            <select v-model="learnCategory" class="rounded-xl border px-3 py-2 text-sm">
+              <option value="ALL">All sections</option>
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
           </div>
         </div>
 
-        <!-- Inline lists -->
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
-          <!-- Highlights list -->
-          <div>
-            <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Highlights</div>
-            <div class="flex max-h-40 flex-col gap-2 overflow-auto">
-              <div v-for="h in (highlightsBySection.get(section.id)||[])" :key="h.id" class="flex items-center justify-between rounded-xl border p-2 text-sm">
-                <div class="flex items-center gap-2">
-                  <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: getLabelColor(h.labelId) }"></span>
-                  <code class="text-xs text-slate-600">{{ excerpt(section.content, h.range) }}</code>
-                </div>
-                <button @click="deleteHighlight(h.id)" class="rounded-lg border px-2 py-1 text-xs shadow-sm hover:bg-slate-50">Delete</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Comments list -->
-          <div>
-            <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Comments</div>
-            <div class="flex max-h-40 flex-col gap-2 overflow-auto">
-              <div v-for="c in (commentsBySection.get(section.id)||[])" :key="c.id" class="rounded-xl border p-2 text-sm">
-                <div class="mb-1 flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <span class="inline-block h-3 w-3 rounded-full ring-1 ring-slate-300" :style="{ background: getLabelColor(c.labelId) }"></span>
-                    <span class="text-xs text-slate-500">{{ rangeLabel(c.range) }}</span>
-                  </div>
-                  <button @click="deleteComment(c.id)" class="rounded-lg border px-2 py-1 text-xs shadow-sm hover:bg-slate-50">Delete</button>
-                </div>
-                <div class="text-slate-800">{{ c.text }}</div>
-              </div>
-            </div>
+        <div v-for="section in filteredSections" :key="section.name" class="mb-6">
+          <h3 class="text-base font-semibold mb-3">{{ section.name }}</h3>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <article v-for="d in section.items" :key="d.name" class="rounded-xl border p-4 shadow-sm">
+              <h4 class="font-semibold">{{ d.name }}</h4>
+              <p class="mt-1 text-sm text-slate-700"><span class="font-medium">Description:</span> {{ d.desc }}</p>
+              <p class="mt-2 text-xs text-slate-500"><span class="font-medium">Example:</span> {{ d.example }}</p>
+            </article>
           </div>
         </div>
       </div>
     </section>
+
   </div>
 
   <script>
-    const { createApp, reactive, ref, computed } = Vue;
+    const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
 
-    function uid(prefix) {
-      return (prefix||'id') + '_' + Math.random().toString(36).slice(2,9);
-    }
-    function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-
-    function averageColors(hexes, alpha) {
-      if (!hexes.length) return 'transparent';
-      let r=0,g=0,b=0;
-      hexes.forEach(h=>{ r+=parseInt(h.slice(1,3),16); g+=parseInt(h.slice(3,5),16); b+=parseInt(h.slice(5,7),16); });
-      r=Math.round(r/hexes.length); g=Math.round(g/hexes.length); b=Math.round(b/hexes.length);
-      return `rgba(${r}, ${g}, ${b}, ${alpha==null?0.4:alpha})`;
-    }
+    // Exact sections from your message
+    const SECTIONS = [
+      {
+        name: 'Unhealthy Interpersonal Patterns',
+        items: [
+          { name: '“My Feelings Are Your Fault”', desc: 'Assigning responsibility for one\'s emotions to the other person.', example: '“I\'m upset because you made me feel this way.”' },
+          { name: '“My Behavior Is Your Fault”', desc: 'Excusing hurtful actions as provoked by the partner.', example: '“I only yelled because you pushed me to it.”' },
+          { name: 'Non-Apology Apology', desc: 'Offering words that sound like an apology without taking responsibility.', example: '“I\'m sorry you feel that way.”' },
+          { name: 'Non-Explanation Explanation', desc: 'Giving vague or meaningless answers to avoid accountability.', example: '“Things are just complicated right now.”' },
+          { name: 'Flooding the Zone', desc: 'Overloading with irrelevant details to avoid scrutiny.', example: 'When asked why they lied, they launch into a 20-minute ramble about stress at work, their family, and unrelated past events.' },
+          { name: '“I’m the Real Victim Here”', desc: 'Flipping the situation to claim they’re the one truly suffering.', example: '“You’re mad that I lied? Well, imagine how hard it is for me to always be misunderstood.”' },
+          { name: 'Minimizing Language', desc: 'Downplaying the impact of their actions.', example: '“It was just a joke, you’re overreacting.”' },
+          { name: '“That’s Not Who I Am”', desc: 'Distancing self from hurtful actions by denying it reflects their character.', example: '“Yes, I cheated, but that’s not who I really am.”' },
+          { name: 'Your Feelings Are Unreasonable', desc: 'Dismissing or invalidating the partner’s emotions.', example: '“You’re too sensitive. Normal people wouldn’t be upset about this.”' },
+          { name: 'Stonewalling', desc: 'Withdrawing, refusing to engage, or giving the silent treatment.', example: 'Partner A wants to discuss a problem; Partner B stares at their phone and says nothing.' },
+          { name: 'Gaslighting', desc: 'Undermining the partner’s perception of reality.', example: '“That never happened—you’re just imagining things.”' },
+        ],
+      },
+      {
+        name: 'Logical Fallacies',
+        items: [
+          { name: 'Straw Man', desc: 'Misrepresenting a partner\'s position to make it easier to attack.', example: 'Partner A says, “I’d like more alone time.” Partner B replies, “Oh, so you’re saying you don’t want to be in this relationship anymore?”' },
+          { name: 'Ad Hominem', desc: 'Attacking the person rather than addressing their argument.', example: '“You’re just saying that because you’re selfish, not because it’s actually a problem.”' },
+          { name: 'Whataboutism', desc: 'Deflecting criticism by pointing to a different issue, often unrelated.', example: '“You hurt my feelings when you canceled our date.” Response: “Well, what about last month when you forgot to call me back?”' },
+          { name: 'Appeal to Pity', desc: 'Trying to win an argument by making the other person feel guilty or sorry.', example: '“If you break up with me, I’ll never recover. I’ll be completely alone.”' },
+        ],
+      },
+      {
+        name: 'Persuasion Techniques',
+        items: [
+          { name: 'Love Bombing', desc: 'Overwhelming someone with excessive affection, gifts, or attention to quickly gain influence or control.', example: 'After only a few dates, one partner showers the other with constant texts, gifts, and declarations of “soulmate love,” making it hard to say no to moving faster than they’re comfortable with.' },
+          { name: 'Scarcity / Playing Hard to Get', desc: 'Suggesting that one’s attention is limited or rare to make the other person feel urgency or competition.', example: '“I don’t normally give people like you a chance, but I’ll make an exception.”' },
+          { name: 'Foot-in-the-Door', desc: 'Getting someone to agree to a small request to increase the likelihood they’ll agree to a bigger one later.', example: '“Can you help me with a quick favor?” later escalates into “Well, since you already helped before, could you pick me up from the airport next week?”' },
+        ],
+      },
+      {
+        name: 'Rhetorical Devices',
+        items: [
+          { name: 'Hyperbole', desc: 'Exaggerating for emphasis.', example: '“You never listen to me, not even once in our whole relationship!”' },
+          { name: 'Metaphor / Analogy', desc: 'Comparing the relationship or partner to something else to make a point.', example: '“We’re like two puzzle pieces—meant to fit perfectly together.”' },
+          { name: 'Appeal to Emotion', desc: 'Using emotionally charged statements rather than logic.', example: '“If you loved me, you’d stay out with me all night instead of going home early.”' },
+        ],
+      },
+    ];
 
     createApp({
       setup() {
-        const sections = reactive([]);
-        const labels = reactive([]);
-        const highlights = reactive([]);
-        const comments = reactive([]);
+        const STORAGE_KEY = 'unified-highlighter-v1';
+        const CONV_KEY = 'unified-highlighter-conversations-v1';
+        const rendered = ref(null);
+        const editArea = ref(null);
+        const route = ref(routeFromHash());
 
-        const newLabelName = ref("");
-        const newLabelColor = ref("#fde047");
-        const newSectionTitle = ref("");
-        const newSectionContent = ref("");
-
-        const selectedLabelId = ref(null); // for creating
-        const filterLabelId = ref(null); // for viewing
-
-        const textareaRefs = new Map();
-        function setSectionRef(id) {
-          return (el) => { if (el) textareaRefs.set(id, el); };
-        }
-
-        // Derived groupings
-        const highlightsBySection = computed(() => {
-          const m = new Map();
-          sections.forEach(s => m.set(s.id, []));
-          highlights.forEach(h => { if(!m.has(h.sectionId)) m.set(h.sectionId, []); m.get(h.sectionId).push(h); });
-          return m;
-        });
-        const commentsBySection = computed(() => {
-          const m = new Map();
-          sections.forEach(s => m.set(s.id, []));
-          comments.forEach(c => { if(!m.has(c.sectionId)) m.set(c.sectionId, []); m.get(c.sectionId).push(c); });
-          return m;
+        // Document state (no predefined labels)
+        const state = reactive({
+          isEditing: true,
+          draftText: '',
+          labels: [],
+          activeFilter: 'ALL',
+          selectedLabelId: '',
+          lastSelectionRange: null,
         });
 
-        function addLabel() {
-          if (!newLabelName.value.trim()) return;
-          labels.push({ id: uid('lab'), name: newLabelName.value.trim(), color: newLabelColor.value });
-          newLabelName.value = "";
+        // Conversations state
+        const conversations = ref(loadConversations());
+        const convSearch = ref('');
+
+        // Learn state
+        const learnSearch = ref('');
+        const learnCategory = ref('ALL');
+
+        const isEditing = computed(() => state.isEditing);
+        const labels = computed(() => state.labels);
+        const selectedLabelId = computed({ get: () => state.selectedLabelId, set: v => state.selectedLabelId = v });
+        const activeFilter = computed({ get: () => state.activeFilter, set: v => state.activeFilter = v });
+        const draftText = computed({ get: () => state.draftText, set: v => state.draftText = v });
+
+        const newLabel = reactive({ name: '', color: '#318b8f' });
+
+        const highlightCount = computed(() => rendered.value ? rendered.value.querySelectorAll('.hl').length : 0);
+
+        const categories = computed(() => SECTIONS.map(s => s.name));
+        const filteredSections = computed(() => {
+          const q = learnSearch.value.trim().toLowerCase();
+          const sects = learnCategory.value === 'ALL' ? SECTIONS : SECTIONS.filter(s => s.name === learnCategory.value);
+          if (!q) return sects;
+          return sects
+            .map(s => ({
+              name: s.name,
+              items: s.items.filter(d => d.name.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q) || (d.example||'').toLowerCase().includes(q))
+            }))
+            .filter(s => s.items.length > 0);
+        });
+
+        function navClass(path) { return ['linklike rounded-xl px-3 py-2', route.value===path ? 'bg-slate-900 text-white' : 'hover:bg-slate-200']; }
+        function go(path) { window.location.hash = '#' + path; }
+        function routeFromHash() { const h = window.location.hash.replace(/^#/, ''); return h || '/'; }
+
+        // Persistence
+        function persist() {
+          const payload = { html: rendered.value ? rendered.value.innerHTML : '', labels: state.labels, isEditing: state.isEditing, draftText: state.draftText };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        }
+        function restore() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            if (Array.isArray(data.labels)) state.labels = data.labels;
+            state.isEditing = !!data.isEditing;
+            state.draftText = data.draftText || '';
+            nextTick(() => { if (rendered.value && data.html && !state.isEditing) { rendered.value.innerHTML = data.html; filterHighlights(); } });
+          } catch (e) { console.warn('Restore error', e); }
         }
 
-        function addSectionFromText() {
-          if (!newSectionContent.value.trim()) return;
-          sections.push({ id: uid('sec'), title: newSectionTitle.value.trim() || 'Section '+(sections.length+1), content: newSectionContent.value });
-          newSectionTitle.value = ""; newSectionContent.value = "";
-        }
+        function loadConversations() { try { const raw = localStorage.getItem(CONV_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; } }
+        function saveConversations() { localStorage.setItem(CONV_KEY, JSON.stringify(conversations.value)); }
 
-        async function onFileUpload(e) {
-          const file = e.target.files[0];
-          if (!file) return;
-          const text = await file.text();
-          sections.push({ id: uid('sec'), title: file.name, content: text });
-          e.target.value = "";
-        }
-
-        // Selection memory per section
-        const lastSelection = ref(null); // { sectionId, start, end }
-        function rememberSelection(section) {
-          const ta = textareaRefs.get(section.id);
-          if (!ta) return;
-          const start = ta.selectionStart, end = ta.selectionEnd;
-          if (start===end) { lastSelection.value = null; return; }
-          lastSelection.value = { sectionId: section.id, start: Math.min(start,end), end: Math.max(start,end) };
-        }
-        function clearSelection() { lastSelection.value = null; }
-
-        function highlightSelection(section) {
-          const sel = lastSelection.value; if (!sel || sel.sectionId!==section.id) return;
-          const id = uid('hl');
-          highlights.push({ id, sectionId: section.id, range: { start: sel.start, end: sel.end }, labelId: selectedLabelId.value });
-          lastSelection.value = null;
-        }
-
-        function openCommentPrompt(section) {
-          const sel = lastSelection.value; if (!sel || sel.sectionId!==section.id) return;
-          const text = window.prompt('Comment text:');
-          if (!text || !text.trim()) return;
-          comments.push({ id: uid('cmt'), sectionId: section.id, range: { start: sel.start, end: sel.end }, text: text.trim(), labelId: selectedLabelId.value });
-          lastSelection.value = null;
-        }
-
-        function deleteHighlight(id) {
-          const idx = highlights.findIndex(h => h.id===id);
-          if (idx>=0) highlights.splice(idx,1);
-        }
-        function deleteComment(id) {
-          const idx = comments.findIndex(c => c.id===id);
-          if (idx>=0) comments.splice(idx,1);
-        }
-
-        function getLabelColor(labelId) {
-          if (!labelId) return '#ffffff';
-          const lab = labels.find(l => l.id===labelId);
-          return lab ? lab.color : '#ffffff';
-        }
-
-        function rangeLabel(r) { return `[${r.start}…${r.end}]`; }
-        function excerpt(text, r) { return text.slice(r.start, Math.min(r.start+24, r.end)).replace(/\s+/g,' ') + (r.end-r.start>24?'…':''); }
-
-        function countHighlights(sectionId) {
-          return (highlightsBySection.value.get(sectionId)||[]).length;
-        }
-
-        // Segment text with (possibly overlapping) highlights
-        function segmentsFor(section) {
-          const text = section.content || '';
-          const hs = (highlightsBySection.value.get(section.id) || []).slice();
-          // when filtering, we still split by all ranges, but style only the ones matching filter
-          const points = new Set([0, text.length]);
-          hs.forEach(h=>{ points.add(clamp(h.range.start,0,text.length)); points.add(clamp(h.range.end,0,text.length)); });
-          const sorted = Array.from(points).sort((a,b)=>a-b);
-          const segs = [];
-          for (let i=0;i<sorted.length-1;i++){
-            const start=sorted[i], end=sorted[i+1];
-            if (start===end) continue;
-            const segText = text.slice(start,end);
-            const segHighlights = hs.filter(h => start < h.range.end && end > h.range.start);
-            segs.push({ start, end, text: segText, highlights: segHighlights });
+        // Document actions
+        function toggleEdit() {
+          state.isEditing = !state.isEditing;
+          if (!state.isEditing) { rendered.value.innerText = state.draftText || ''; persist(); filterHighlights(); }
+          else {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = rendered.value.innerHTML;
+            tmp.querySelectorAll('.hl').forEach(n => { const parent = n.parentNode; while (n.firstChild) parent.insertBefore(n.firstChild, n); parent.removeChild(n); });
+            state.draftText = tmp.innerText;
           }
-          return segs;
+          nextTick(persist);
         }
+        function addLabel() { if (!newLabel.name.trim()) return; const id = 'lab_' + Math.random().toString(36).slice(2, 9); state.labels.push({ id, name: newLabel.name.trim(), color: newLabel.color }); newLabel.name = ''; selectedLabelId.value = id; persist(); }
+        function getLabel(id) { return state.labels.find(l => l.id === id); }
+        function cacheSelectionRange() { const sel = window.getSelection(); if (sel && sel.rangeCount > 0) { const range = sel.getRangeAt(0); if (rendered.value && rendered.value.contains(range.commonAncestorContainer) && !state.isEditing) { state.lastSelectionRange = range.cloneRange(); } } }
+        function clearSelection() { const sel = window.getSelection(); if (!sel) return; sel.removeAllRanges(); state.lastSelectionRange = null; }
+        function wrapRangeWithSpan(range, label) { range = normalizeRange(range); if (!range) return; const span = document.createElement('span'); span.className = 'hl'; span.dataset.label = label.id; span.style.background = rgbaFromHex(label.color, 0.45); try { range.surroundContents(span); } catch (e) { const frag = range.extractContents(); span.appendChild(frag); range.insertNode(span); } mergeAdjacent(span); }
+        function mergeAdjacent(node) { if (!node || !node.parentNode) return; const label = node.dataset.label; let prev = node.previousSibling; if (prev && prev.nodeType === 1 && prev.classList.contains('hl') && prev.dataset.label === label) { while (node.firstChild) prev.appendChild(node.firstChild); node.remove(); node = prev; } let next = node.nextSibling; if (next && next.nodeType === 1 && next.classList.contains('hl') && next.dataset.label === label) { while (next.firstChild) node.appendChild(next.firstChild); next.remove(); } }
+        function normalizeRange(range) { if (!range || range.collapsed) return null; function firstText(root){ const it = document.createNodeIterator(root, NodeFilter.SHOW_TEXT); return it.nextNode(); } function lastText(root){ const it = document.createNodeIterator(root, NodeFilter.SHOW_TEXT); let last = null, n; while ((n = it.nextNode())) last = n; return last; } function toTextBoundary(node, isStart){ if (node.nodeType === Node.TEXT_NODE) return { node, offset: isStart ? 0 : node.nodeValue.length }; const chosen = isStart ? firstText(node) : lastText(node); return chosen ? { node: chosen, offset: isStart ? 0 : chosen.nodeValue.length } : null; } let startNode = range.startContainer, startOffset = range.startOffset; let endNode = range.endContainer, endOffset = range.endOffset; if (startNode.nodeType !== Node.TEXT_NODE){ const b = toTextBoundary(startNode, true); if (!b) return null; startNode = b.node; startOffset = b.offset; } if (endNode.nodeType !== Node.TEXT_NODE){ const b = toTextBoundary(endNode, false); if (!b) return null; endNode = b.node; endOffset = b.offset; } const norm = document.createRange(); norm.setStart(startNode, startOffset); norm.setEnd(endNode, endOffset); return norm; }
+        function applyHighlight() { if (state.isEditing) return; if (!selectedLabelId.value) return; const label = getLabel(selectedLabelId.value); if (!label) return; let range = state.lastSelectionRange; if (!range){ const sel = window.getSelection(); if (!sel || sel.rangeCount === 0) return; range = sel.getRangeAt(0); if (!rendered.value.contains(range.commonAncestorContainer)) return; } if (range.collapsed) return; wrapRangeWithSpan(range, label); clearSelection(); persist(); filterHighlights(); }
+        function filterHighlights() { if (!rendered.value) return; rendered.value.querySelectorAll('.hl').forEach(span => { const active = (state.activeFilter === 'ALL') || (span.dataset.label === state.activeFilter); span.dataset.active = active ? 'true' : 'false'; }); }
+        function rgbaFromHex(hex, alpha){ const s = (hex || '').toString().trim(); const h = s[0] === '#' ? s.slice(1) : s; let r=0,g=0,b=0; if (h.length===3){ r=parseInt(h[0]+h[0],16); g=parseInt(h[1]+h[1],16); b=parseInt(h[2]+h[2],16);} else if (h.length===6){ r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16);} return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + (alpha==null?1:alpha) + ')'; }
+        function exportHTML(){ const blob = new Blob(['<div class="rendered">' + (rendered.value? rendered.value.innerHTML : '') + '</div>'], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'highlighted.html'; a.click(); URL.revokeObjectURL(a.href); }
+        function resetAll(){ if (!confirm('Clear document and highlights?')) return; state.isEditing = true; state.draftText = ''; if (rendered.value) rendered.value.innerHTML = ''; persist(); }
 
-        function highlightStyle(hls) {
-          // If filtering, include only matching label colors; otherwise include all
-          const visible = hls.filter(h => !filterLabelId.value || h.labelId===filterLabelId.value);
-          if (!visible.length) return { background: 'transparent' };
-          const colors = visible.map(h => getLabelColor(h.labelId));
-          return { background: averageColors(colors, 0.45) };
-        }
+        // Conversations helpers
+        function saveConversation(){ if (state.isEditing) { alert('Click Save first so the document is rendered.'); return; } const name = prompt('Name this conversation:'); if (!name) return; const conv = { id: 'c_' + Math.random().toString(36).slice(2,10), name: name.trim(), html: rendered.value.innerHTML, labels: JSON.parse(JSON.stringify(state.labels)), createdAt: Date.now() }; conversations.value.push(conv); saveConversations(); alert('Saved! See the Conversations tab.'); }
+        function loadConversation(id){ const c = conversations.value.find(x => x.id === id); if (!c) return; go('/'); nextTick(() => { state.isEditing = false; rendered.value.innerHTML = c.html; state.labels = JSON.parse(JSON.stringify(c.labels)); persist(); filterHighlights(); }); }
+        function deleteConversation(id){ if (!confirm('Delete this conversation?')) return; conversations.value = conversations.value.filter(c => c.id !== id); saveConversations(); }
+        function exportConversation(id){ const c = conversations.value.find(x => x.id === id); if (!c) return; const name = (c.name || 'conversation').split(' ').join('_'); const blob = new Blob(['<div class="rendered">' + c.html + '</div>'], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + '.html'; a.click(); URL.revokeObjectURL(a.href); }
+        function formatDate(ts){ const d = new Date(ts); return d.toLocaleString(); }
 
-        function seedDemo() {
-          labels.splice(0, labels.length, { id: uid('lab'), name: 'Claim', color: '#fca5a5' }, { id: uid('lab'), name: 'Evidence', color: '#93c5fd' }, { id: uid('lab'), name: 'Counter', color: '#fde68a' });
-          sections.splice(0, sections.length, { id: uid('sec'), title: 'Demo Passage', content: 'The quick brown fox jumps over the lazy dog. The second sentence provides evidence. However, a counterpoint emerges later.' });
-          const s = sections[0];
-          highlights.splice(0, highlights.length,
-            { id: uid('hl'), sectionId: s.id, range: { start: 4, end: 19 }, labelId: labels[0].id },
-            { id: uid('hl'), sectionId: s.id, range: { start: 16, end: 35 }, labelId: labels[1].id },
-            { id: uid('hl'), sectionId: s.id, range: { start: 57, end: 86 }, labelId: labels[1].id },
-            { id: uid('hl'), sectionId: s.id, range: { start: 94, end: 115 }, labelId: labels[2].id }
-          );
-          comments.splice(0, comments.length,
-            { id: uid('cmt'), sectionId: s.id, range: { start: 4, end: 19 }, text: 'Main claim here', labelId: labels[0].id },
-            { id: uid('cmt'), sectionId: s.id, range: { start: 57, end: 86 }, text: 'Evidence provided', labelId: labels[1].id },
-            { id: uid('cmt'), sectionId: s.id, range: { start: 94, end: 115 }, text: 'Counter-argument noted', labelId: labels[2].id },
-          );
-          filterLabelId.value = null; selectedLabelId.value = labels[0].id; lastSelection.value = null;
-        }
+        // Routing
+        window.addEventListener('hashchange', () => { route.value = routeFromHash(); });
 
-        return {
-          // state
-          sections, labels, highlights, comments,
-          newLabelName, newLabelColor, newSectionTitle, newSectionContent,
-          selectedLabelId, filterLabelId,
-          // refs
-          setSectionRef, rememberSelection, clearSelection,
-          // actions
-          addLabel, addSectionFromText, onFileUpload, highlightSelection, openCommentPrompt,
-          deleteHighlight, deleteComment,
-          // derived helpers
-          highlightsBySection, commentsBySection,
-          segmentsFor, highlightStyle, getLabelColor,
-          excerpt, rangeLabel, countHighlights,
-          seedDemo
-        };
+        onMounted(() => {
+          restore();
+          nextTick(() => { if (!state.isEditing && rendered.value && !rendered.value.innerHTML && state.draftText) { rendered.value.innerText = state.draftText; filterHighlights(); } });
+        });
+
+        watch(() => state.activeFilter, () => filterHighlights());
+
+        return { route, go, navClass,
+                 // doc
+                 isEditing, labels, selectedLabelId, activeFilter, draftText, newLabel, highlightCount, rendered, editArea,
+                 toggleEdit, addLabel, applyHighlight, clearSelection, cacheSelectionRange, filterHighlights, exportHTML, resetAll,
+                 // conversations
+                 conversations, convSearch, filteredConversations: computed(() => { const q = convSearch.value.trim().toLowerCase(); return conversations.value.slice().sort((a,b)=> b.createdAt - a.createdAt).filter(c => !q || c.name.toLowerCase().includes(q)); }), loadConversation, saveConversation, deleteConversation, exportConversation, formatDate,
+                 // learn
+                 learnSearch, learnCategory, categories, filteredSections };
       }
     }).mount('#app');
   </script>
